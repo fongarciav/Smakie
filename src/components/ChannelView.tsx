@@ -30,6 +30,8 @@ import {
   Info,
 } from 'lucide-react';
 
+import { db } from '../lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { ReportModal } from './ReportModal';
 import { ReportListModal } from './ReportListModal';
 
@@ -389,7 +391,13 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
   };
 
   // Retry transcription for a failed message
-  const handleRetryTranscription = (msg: Message) => {
+  const handleRetryTranscription = async (msg: Message) => {
+    try {
+      const msgRef = doc(db, 'channels', channel.id, 'messages', msg.id);
+      await updateDoc(msgRef, { transcriptStatus: 'pending' });
+    } catch (e) {
+      console.error(e);
+    }
     processAudioTranscription(channel.id, msg.id, msg.audioData);
   };
 

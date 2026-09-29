@@ -67,6 +67,42 @@ function detectSafetyAlerts(text: string): { hasAlert: boolean; keywords: string
   };
 }
 
+const CANDIDATE_MODELS = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+
+async function generateContentWithFallback(params: {
+  contents: any;
+  config?: any;
+}) {
+  let lastError: any = null;
+
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config,
+      });
+      return { response, modelUsed: model };
+    } catch (err: any) {
+      lastError = err;
+      const isQuota =
+        err?.status === 'RESOURCE_EXHAUSTED' ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('quota') ||
+        err?.message?.includes('Quota exceeded') ||
+        err?.message?.includes('RESOURCE_EXHAUSTED');
+
+      if (isQuota) {
+        console.warn(`Modelo ${model} agotó cuota (429). Probando siguiente modelo de respaldo...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
+}
+
 // Endpoint: Transcribe Audio
 app.post('/api/transcribe', async (req: Request, res: Response) => {
   try {
@@ -111,49 +147,16 @@ Instrucciones estrictas:
       },
     };
 
-    let transcript = '';
+    const { response } = await generateContentWithFallback({
+      contents: {
+        parts: [
+          audioPart,
+          { text: promptText },
+        ],
+      },
+    });
 
-    try {
-      // Preferred transcription model
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-transcribe',
-        contents: {
-          parts: [
-            audioPart,
-            { text: promptText },
-          ],
-        },
-      });
-      transcript = response.text?.trim() || '';
-
-      if (!transcript) {
-        console.log('gemini-3.5-transcribe devolvió texto vacío. Respuesta completa:', JSON.stringify(response, null, 2));
-        console.warn('Fallback por texto vacío de gemini-3.5-transcribe a gemini-3.8-flash para audio');
-        const fallbackResponse = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: {
-            parts: [
-              audioPart,
-              { text: promptText },
-            ],
-          },
-        });
-        transcript = fallbackResponse.text?.trim() || '';
-      }
-    } catch (err) {
-      console.warn('Fallback from gemini-3.5-transcribe to gemini-3.8-flash for audio:', err);
-      // Fallback to gemini-3.8-flash which also handles audio
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: {
-          parts: [
-            audioPart,
-            { text: promptText },
-          ],
-        },
-      });
-      transcript = response.text?.trim() || '';
-    }
+    let transcript = response.text?.trim() || '';
 
     if (!transcript) {
       transcript = '[Audio sin voz reconocible]';
@@ -168,8 +171,18 @@ Instrucciones estrictas:
     });
   } catch (error: any) {
     console.error('Error in /api/transcribe:', error);
-    return res.status(500).json({
-      error: error.message || 'Error al procesar la transcripción del audio',
+    const isQuota =
+      error?.status === 'RESOURCE_EXHAUSTED' ||
+      error?.message?.includes('429') ||
+      error?.message?.includes('quota') ||
+      error?.message?.includes('Quota exceeded');
+
+    const statusCode = isQuota ? 429 : 500;
+    return res.status(statusCode).json({
+      error: isQuota
+        ? 'Límite temporal de cuota excedido. Por favor esperá unos segundos antes de reintentar.'
+        : (error.message || 'Error al procesar la transcripción del audio'),
+      isQuotaExceeded: isQuota,
     });
   }
 });
@@ -228,8 +241,7 @@ REGLAS OBLIGATORIAS:
 - NUNCA inventes datos, números ni incidentes que no estén presentes en las transcripciones.
 - Mantené un tono sobrio, industrial y directo.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const { response } = await generateContentWithFallback({
       contents: prompt,
     });
 
@@ -240,8 +252,17 @@ REGLAS OBLIGATORIAS:
     });
   } catch (error: any) {
     console.error('Error in /api/generate-report:', error);
-    return res.status(500).json({
-      error: error.message || 'Error al generar el reporte con IA',
+    const isQuota =
+      error?.status === 'RESOURCE_EXHAUSTED' ||
+      error?.message?.includes('429') ||
+      error?.message?.includes('quota') ||
+      error?.message?.includes('Quota exceeded');
+
+    const statusCode = isQuota ? 429 : 500;
+    return res.status(statusCode).json({
+      error: isQuota
+        ? 'Límite de cuota alcanzado. Esperá unos segundos antes de reintentar el reporte.'
+        : (error.message || 'Error al generar el reporte con IA'),
     });
   }
 });
