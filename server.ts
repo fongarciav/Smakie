@@ -76,8 +76,25 @@ app.post('/api/transcribe', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Falta el audio para transcribir' });
     }
 
-    // Clean data URL prefix if present
-    const cleanBase64 = audioBase64.replace(/^data:audio\/[a-z0-9.-]+;base64,/, '');
+    let cleanBase64 = audioBase64;
+    let detectedMime = mimeType;
+
+    if (audioBase64.includes(',')) {
+      const commaIndex = audioBase64.indexOf(',');
+      const header = audioBase64.substring(0, commaIndex);
+      cleanBase64 = audioBase64.substring(commaIndex + 1);
+
+      const mimeMatch = header.match(/^data:([^;]+)/);
+      if (mimeMatch && mimeMatch[1]) {
+        detectedMime = mimeMatch[1].trim();
+      }
+    } else if (detectedMime.includes(';')) {
+      detectedMime = detectedMime.split(';')[0].trim();
+    }
+
+    if (detectedMime === 'audio/mp4' || detectedMime === 'audio/x-m4a') {
+      detectedMime = 'audio/m4a';
+    }
 
     const promptText = `Sos el transcriptor oficial del sistema de radio walkie-talkie para cuadrillas de trabajo en obras, minería y energía en Argentina.
 Instrucciones estrictas:
@@ -89,7 +106,7 @@ Instrucciones estrictas:
 
     const audioPart = {
       inlineData: {
-        mimeType: mimeType.split(';')[0] || 'audio/webm',
+        mimeType: detectedMime,
         data: cleanBase64,
       },
     };
