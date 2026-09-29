@@ -125,6 +125,21 @@ Instrucciones estrictas:
         },
       });
       transcript = response.text?.trim() || '';
+
+      if (!transcript) {
+        console.log('gemini-3.5-transcribe devolvió texto vacío. Respuesta completa:', JSON.stringify(response, null, 2));
+        console.warn('Fallback por texto vacío de gemini-3.5-transcribe a gemini-3.8-flash para audio');
+        const fallbackResponse = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: {
+            parts: [
+              audioPart,
+              { text: promptText },
+            ],
+          },
+        });
+        transcript = fallbackResponse.text?.trim() || '';
+      }
     } catch (err) {
       console.warn('Fallback from gemini-3.5-transcribe to gemini-3.8-flash for audio:', err);
       // Fallback to gemini-3.8-flash which also handles audio
