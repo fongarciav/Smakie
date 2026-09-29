@@ -1,0 +1,8 @@
+{
+  "name": "VozDeObra - Walkie Talkie & Reportes",
+  "description": "Walkie-talkie con memoria y reportes de IA para cuadrillas de obra, minería y energía.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

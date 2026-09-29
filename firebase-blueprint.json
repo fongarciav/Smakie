@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Perfil de usuario con nombre visible de cuadrilla",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 80 },
+        "email": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "displayName", "email"]
+    },
+    "Channel": {
+      "title": "Channel",
+      "description": "Canal de walkie-talkie para una cuadrilla o turno",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "code": { "type": "string", "maxLength": 10 },
+        "creatorId": { "type": "string", "maxLength": 128 },
+        "creatorName": { "type": "string", "maxLength": 80 },
+        "members": { "type": "array" },
+        "activeSpeaker": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "code", "creatorId", "members"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Mensaje de voz grabado en el walkie-talkie",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 80 },
+        "audioData": { "type": "string", "maxLength": 1048576 },
+        "duration": { "type": "number" },
+        "transcript": { "type": "string", "maxLength": 5000 },
+        "transcriptStatus": { "type": "string", "enum": ["pending", "completed", "error"] },
+        "hasSafetyAlert": { "type": "boolean" },
+        "safetyKeywords": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["channelId", "authorId", "authorName", "audioData", "duration", "transcriptStatus"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Reporte de turno generado por IA para el canal",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string", "maxLength": 128 },
+        "period": { "type": "string", "maxLength": 100 },
+        "periodStart": { "type": "string" },
+        "periodEnd": { "type": "string" },
+        "content": { "type": "string", "maxLength": 20000 },
+        "createdById": { "type": "string", "maxLength": 128 },
+        "createdByName": { "type": "string", "maxLength": 80 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["channelId", "period", "content", "createdById", "createdByName"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Perfiles públicos y de cuadrilla de usuarios"
+    },
+    "/channels/{channelId}": {
+      "schema": "Channel",
+      "description": "Canales de trabajo en terreno y sus miembros"
+    },
+    "/channels/{channelId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Mensajes de audio y transcripciones del canal"
+    },
+    "/channels/{channelId}/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Reportes de turno e incidentes generados con IA"
+    }
+  }
+}

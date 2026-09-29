@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isChannelMember(channelData) {
+      return isSignedIn() && (request.auth.uid in channelData.members);
+    }
+
+    function isParentMember(channelId) {
+      return isSignedIn() && (
+        request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.members
+      );
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn() 
+        && request.auth.uid == userId 
+        && incoming().uid == request.auth.uid
+        && incoming().displayName is string && incoming().displayName.size() > 0 && incoming().displayName.size() <= 100;
+      allow update: if isSignedIn() 
+        && request.auth.uid == userId 
+        && incoming().uid == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt', 'email']);
+      allow delete: if false;
+    }
+
+    // Channels Collection
+    match /channels/{channelId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (request.auth.uid in resource.data.members);
+      allow create: if isSignedIn()
+        && incoming().creatorId == request.auth.uid
+        && (request.auth.uid in incoming().members)
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 120
+        && incoming().code is string && incoming().code.size() >= 4 && incoming().code.size() <= 12;
+      
+      allow update: if isSignedIn() && (
+        // Action: Join channel by adding self to members
+        (request.auth.uid in incoming().members && incoming().diff(existing()).affectedKeys().hasOnly(['members']))
+        ||
+        // Action: Active speaker broadcast (can set self or clear to null)
+        (isChannelMember(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['activeSpeaker']))
+        ||
+        // Action: Update channel name or members by creator or existing members
+        (isChannelMember(existing()) && incoming().creatorId == existing().creatorId && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'members', 'activeSpeaker']))
+      );
+
+      allow delete: if isSignedIn() && existing().creatorId == request.auth.uid;
+
+      // Messages Subcollection
+      match /messages/{messageId} {
+        allow get, list: if isParentMember(channelId);
+        allow create: if isParentMember(channelId)
+          && incoming().authorId == request.auth.uid
+          && incoming().channelId == channelId
+          && incoming().audioData is string && incoming().audioData.size() <= 1048576
+          && incoming().duration is number;
+        
+        allow update: if isParentMember(channelId) && (
+          // Update transcript / safety alerts
+          incoming().diff(existing()).affectedKeys().hasOnly(['transcript', 'transcriptStatus', 'hasSafetyAlert', 'safetyKeywords'])
+        );
+
+        allow delete: if isSignedIn() && (
+          existing().authorId == request.auth.uid ||
+          get(/databases/$(database)/documents/channels/$(channelId)).data.creatorId == request.auth.uid
+        );
+      }
+
+      // Reports Subcollection
+      match /reports/{reportId} {
+        allow get, list: if isParentMember(channelId);
+        allow create: if isParentMember(channelId)
+          && incoming().createdById == request.auth.uid
+          && incoming().channelId == channelId
+          && incoming().content is string && incoming().content.size() <= 30000;
+        
+        allow update: if isParentMember(channelId) && existing().createdById == request.auth.uid;
+        allow delete: if isSignedIn() && (
+          existing().createdById == request.auth.uid ||
+          get(/databases/$(database)/documents/channels/$(channelId)).data.creatorId == request.auth.uid
+        );
+      }
+    }
+  }
+}
